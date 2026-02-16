@@ -1,0 +1,17 @@
+{
+  "id": "sanity-cms",
+  "name": "Sanity CMS",
+  "version": "1.0.0",
+  "description": "Sanity Studio integration with native webview support",
+  "slots": ["preview"],
+  "author": "Ship Studio",
+  "repository": "https://github.com/ship-studio/plugin-sanity",
+  "min_app_version": "0.3.53",
+  "icon": "icon.svg",
+  "required_commands": [
+    "create_preview_webview",
+    "resize_preview_webview",
+    "destroy_preview_webview"
+  ],
+  "api_version": 1
+}
