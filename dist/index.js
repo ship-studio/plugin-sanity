@@ -225,9 +225,10 @@ function useInjectStyles() {
 }
 function useSanityDetection() {
   const ctx = usePluginContext();
-  const shell = ctx.shell;
   const project = ctx.project;
   const [hasSanity, setHasSanity] = useState(false);
+  const shellRef = useRef(ctx.shell);
+  shellRef.current = ctx.shell;
   useEffect(() => {
     if (!(project == null ? void 0 : project.path)) {
       setHasSanity(false);
@@ -235,7 +236,7 @@ function useSanityDetection() {
     }
     const check = async () => {
       try {
-        const configResult = await shell.exec("ls", ["sanity.config.ts", "sanity.config.js"]);
+        const configResult = await shellRef.current.exec("ls", ["sanity.config.ts", "sanity.config.js"]);
         if (configResult.exit_code === 0 && configResult.stdout.trim()) {
           setHasSanity(true);
           return;
@@ -243,7 +244,7 @@ function useSanityDetection() {
       } catch {
       }
       try {
-        const pkgResult = await shell.exec("cat", ["package.json"]);
+        const pkgResult = await shellRef.current.exec("cat", ["package.json"]);
         if (pkgResult.exit_code === 0) {
           const content = pkgResult.stdout;
           if (content.includes('"sanity"') || content.includes('"next-sanity"')) {
@@ -258,14 +259,15 @@ function useSanityDetection() {
     void check();
     const interval = setInterval(() => void check(), SANITY_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [project == null ? void 0 : project.path, shell]);
+  }, [project == null ? void 0 : project.path]);
   return hasSanity;
 }
 function useSanityEnvCheck(hasSanity) {
   const ctx = usePluginContext();
-  const shell = ctx.shell;
   const project = ctx.project;
   const [missingKeys, setMissingKeys] = useState([]);
+  const shellRef = useRef(ctx.shell);
+  shellRef.current = ctx.shell;
   useEffect(() => {
     if (!hasSanity || !(project == null ? void 0 : project.path)) {
       setMissingKeys([]);
@@ -280,7 +282,7 @@ function useSanityEnvCheck(hasSanity) {
       const foundKeys = /* @__PURE__ */ new Set();
       for (const envFile of [".env.local", ".env"]) {
         try {
-          const result = await shell.exec("cat", [envFile]);
+          const result = await shellRef.current.exec("cat", [envFile]);
           if (result.exit_code === 0) {
             for (const line of result.stdout.split("\n")) {
               const trimmed = line.trim();
@@ -298,7 +300,7 @@ function useSanityEnvCheck(hasSanity) {
     void check();
     const interval = setInterval(() => void check(), SANITY_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [hasSanity, project == null ? void 0 : project.path, shell]);
+  }, [hasSanity, project == null ? void 0 : project.path]);
   return missingKeys;
 }
 function SanityIcon() {
@@ -306,9 +308,10 @@ function SanityIcon() {
 }
 function SanityModal({ onClose, devServerUrl }) {
   const ctx = usePluginContext();
-  const invoke = ctx.invoke;
   const [webviewReady, setWebviewReady] = useState(false);
   const contentRef = useRef(null);
+  const invokeRef = useRef(ctx.invoke);
+  invokeRef.current = ctx.invoke;
   useEffect(() => {
     if (!contentRef.current) return;
     let cancelled = false;
@@ -326,7 +329,7 @@ function SanityModal({ onClose, devServerUrl }) {
         return;
       }
       try {
-        await invoke.call("create_preview_webview", {
+        await invokeRef.current.call("create_preview_webview", {
           url: `${devServerUrl}/studio`,
           x: rect.left,
           y: rect.top + TITLE_BAR_HEIGHT,
@@ -343,7 +346,7 @@ function SanityModal({ onClose, devServerUrl }) {
       if (!contentRef.current) return;
       const rect = contentRef.current.getBoundingClientRect();
       try {
-        await invoke.call("resize_preview_webview", {
+        await invokeRef.current.call("resize_preview_webview", {
           x: rect.left,
           y: rect.top + TITLE_BAR_HEIGHT,
           width: rect.width,
@@ -358,19 +361,19 @@ function SanityModal({ onClose, devServerUrl }) {
     return () => {
       cancelled = true;
       window.removeEventListener("resize", wrappedResize);
-      invoke.call("destroy_preview_webview").catch((err) => {
+      invokeRef.current.call("destroy_preview_webview").catch((err) => {
         console.error("[sanity-cms] Failed to destroy webview on cleanup:", err);
       });
     };
-  }, [invoke, devServerUrl]);
+  }, [devServerUrl]);
   const handleClose = useCallback(async () => {
     try {
-      await invoke.call("destroy_preview_webview");
+      await invokeRef.current.call("destroy_preview_webview");
     } catch (error) {
       console.error("[sanity-cms] Failed to destroy webview:", error);
     }
     onClose();
-  }, [invoke, onClose]);
+  }, [onClose]);
   useEffect(() => {
     const handler = (e) => {
       if (e.key === "Escape") void handleClose();

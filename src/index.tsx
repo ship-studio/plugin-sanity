@@ -305,9 +305,12 @@ function useInjectStyles() {
 /** Check if project has Sanity CMS installed */
 function useSanityDetection() {
   const ctx = usePluginContext();
-  const shell = ctx.shell;
   const project = ctx.project;
   const [hasSanity, setHasSanity] = useState(false);
+
+  // Ref to avoid re-running effect when context object is rebuilt
+  const shellRef = useRef(ctx.shell);
+  shellRef.current = ctx.shell;
 
   useEffect(() => {
     if (!project?.path) {
@@ -318,7 +321,7 @@ function useSanityDetection() {
     const check = async () => {
       try {
         // Check for sanity.config.ts or sanity.config.js
-        const configResult = await shell.exec('ls', ['sanity.config.ts', 'sanity.config.js']);
+        const configResult = await shellRef.current.exec('ls', ['sanity.config.ts', 'sanity.config.js']);
         if (configResult.exit_code === 0 && configResult.stdout.trim()) {
           setHasSanity(true);
           return;
@@ -329,7 +332,7 @@ function useSanityDetection() {
 
       try {
         // Check package.json for sanity dependencies
-        const pkgResult = await shell.exec('cat', ['package.json']);
+        const pkgResult = await shellRef.current.exec('cat', ['package.json']);
         if (pkgResult.exit_code === 0) {
           const content = pkgResult.stdout;
           if (content.includes('"sanity"') || content.includes('"next-sanity"')) {
@@ -347,7 +350,7 @@ function useSanityDetection() {
     void check();
     const interval = setInterval(() => void check(), SANITY_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [project?.path, shell]);
+  }, [project?.path]);
 
   return hasSanity;
 }
@@ -355,9 +358,12 @@ function useSanityDetection() {
 /** Check for missing Sanity environment variables */
 function useSanityEnvCheck(hasSanity: boolean) {
   const ctx = usePluginContext();
-  const shell = ctx.shell;
   const project = ctx.project;
   const [missingKeys, setMissingKeys] = useState<string[]>([]);
+
+  // Ref to avoid re-running effect when context object is rebuilt
+  const shellRef = useRef(ctx.shell);
+  shellRef.current = ctx.shell;
 
   useEffect(() => {
     if (!hasSanity || !project?.path) {
@@ -376,7 +382,7 @@ function useSanityEnvCheck(hasSanity: boolean) {
       // Check .env.local first, then .env
       for (const envFile of ['.env.local', '.env']) {
         try {
-          const result = await shell.exec('cat', [envFile]);
+          const result = await shellRef.current.exec('cat', [envFile]);
           if (result.exit_code === 0) {
             for (const line of result.stdout.split('\n')) {
               const trimmed = line.trim();
@@ -397,7 +403,7 @@ function useSanityEnvCheck(hasSanity: boolean) {
     void check();
     const interval = setInterval(() => void check(), SANITY_CHECK_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [hasSanity, project?.path, shell]);
+  }, [hasSanity, project?.path]);
 
   return missingKeys;
 }
@@ -420,9 +426,13 @@ function SanityIcon() {
 
 function SanityModal({ onClose, devServerUrl }: { onClose: () => void; devServerUrl: string }) {
   const ctx = usePluginContext();
-  const invoke = ctx.invoke;
   const [webviewReady, setWebviewReady] = useState(false);
   const contentRef = useRef<HTMLDivElement>(null);
+
+  // Store invoke in a ref so the useEffect doesn't re-run when
+  // PluginSlot rebuilds the context object on every render
+  const invokeRef = useRef(ctx.invoke);
+  invokeRef.current = ctx.invoke;
 
   // Create webview when modal mounts
   useEffect(() => {
@@ -446,7 +456,7 @@ function SanityModal({ onClose, devServerUrl }: { onClose: () => void; devServer
       }
 
       try {
-        await invoke.call('create_preview_webview', {
+        await invokeRef.current.call('create_preview_webview', {
           url: `${devServerUrl}/studio`,
           x: rect.left,
           y: rect.top + TITLE_BAR_HEIGHT,
@@ -466,7 +476,7 @@ function SanityModal({ onClose, devServerUrl }: { onClose: () => void; devServer
       if (!contentRef.current) return;
       const rect = contentRef.current.getBoundingClientRect();
       try {
-        await invoke.call('resize_preview_webview', {
+        await invokeRef.current.call('resize_preview_webview', {
           x: rect.left,
           y: rect.top + TITLE_BAR_HEIGHT,
           width: rect.width,
@@ -484,21 +494,21 @@ function SanityModal({ onClose, devServerUrl }: { onClose: () => void; devServer
       cancelled = true;
       window.removeEventListener('resize', wrappedResize);
       // Always destroy webview on unmount (close, navigate away, etc.)
-      invoke.call('destroy_preview_webview').catch((err) => {
+      invokeRef.current.call('destroy_preview_webview').catch((err: unknown) => {
         console.error('[sanity-cms] Failed to destroy webview on cleanup:', err);
       });
     };
-  }, [invoke, devServerUrl]);
+  }, [devServerUrl]);
 
   // Close handler: destroy webview then close modal
   const handleClose = useCallback(async () => {
     try {
-      await invoke.call('destroy_preview_webview');
+      await invokeRef.current.call('destroy_preview_webview');
     } catch (error) {
       console.error('[sanity-cms] Failed to destroy webview:', error);
     }
     onClose();
-  }, [invoke, onClose]);
+  }, [onClose]);
 
   // Close on Escape
   useEffect(() => {
