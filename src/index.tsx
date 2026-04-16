@@ -71,6 +71,10 @@ function usePluginContext(): PluginContextValue {
     if (ctx) return ctx;
   }
 
+  // Fall back to legacy global
+  const directCtx = _w.__SHIPSTUDIO_PLUGIN_CONTEXT__ as PluginContextValue | undefined;
+  if (directCtx) return directCtx;
+
   throw new Error('Plugin context not available.');
 }
 

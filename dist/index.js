@@ -8,6 +8,8 @@ function usePluginContext() {
     const ctx = React.useContext(CtxRef);
     if (ctx) return ctx;
   }
+  const directCtx = _w.__SHIPSTUDIO_PLUGIN_CONTEXT__;
+  if (directCtx) return directCtx;
   throw new Error("Plugin context not available.");
 }
 const SANITY_CHECK_INTERVAL_MS = 5e3;
