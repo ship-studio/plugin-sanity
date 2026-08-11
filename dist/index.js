@@ -225,6 +225,14 @@ function useInjectStyles() {
     };
   }, []);
 }
+function readFile(shell, path, options) {
+  const script = `try{process.stdout.write(require('fs').readFileSync(process.argv[1],'utf8'))}catch(e){process.exit(1)}`;
+  return shell.exec("node", ["-e", script, path], options ?? { timeout: 10 });
+}
+function firstExistingFile(shell, paths, options) {
+  const script = `const fs=require('fs');const hit=process.argv.slice(1).find(p=>fs.existsSync(p));if(hit){process.stdout.write(hit)}else{process.exit(1)}`;
+  return shell.exec("node", ["-e", script, ...paths], options ?? { timeout: 10 });
+}
 function useSanityDetection() {
   const ctx = usePluginContext();
   const project = ctx.project;
@@ -238,7 +246,11 @@ function useSanityDetection() {
     }
     const check = async () => {
       try {
-        const configResult = await shellRef.current.exec("ls", ["sanity.config.ts", "sanity.config.js"]);
+        const configResult = await firstExistingFile(
+          shellRef.current,
+          ["sanity.config.ts", "sanity.config.js"],
+          { timeout: 10 }
+        );
         if (configResult.exit_code === 0 && configResult.stdout.trim()) {
           setHasSanity(true);
           return;
@@ -246,7 +258,7 @@ function useSanityDetection() {
       } catch {
       }
       try {
-        const pkgResult = await shellRef.current.exec("cat", ["package.json"]);
+        const pkgResult = await readFile(shellRef.current, "package.json", { timeout: 10 });
         if (pkgResult.exit_code === 0) {
           const content = pkgResult.stdout;
           if (content.includes('"sanity"') || content.includes('"next-sanity"')) {
@@ -284,7 +296,7 @@ function useSanityEnvCheck(hasSanity) {
       const foundKeys = /* @__PURE__ */ new Set();
       for (const envFile of [".env.local", ".env"]) {
         try {
-          const result = await shellRef.current.exec("cat", [envFile]);
+          const result = await readFile(shellRef.current, envFile, { timeout: 10 });
           if (result.exit_code === 0) {
             for (const line of result.stdout.split("\n")) {
               const trimmed = line.trim();
