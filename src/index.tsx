@@ -303,6 +303,37 @@ function useInjectStyles() {
 }
 
 // ---------------------------------------------------------------------------
+// Cross-platform file helpers
+// ---------------------------------------------------------------------------
+// Ship Studio's shell.exec() spawns commands directly without a shell, so
+// POSIX tools (`ls`, `cat`) don't exist on Windows PATH and the host rejects
+// them — and these checks run on a 5s interval, so on Windows that meant a
+// permanent toast loop. Route file reads/checks through Node instead — same
+// approach as the fix shipped in plugin-vercel (commit b0a23cc).
+
+type Shell = PluginContextValue['shell'];
+type ExecOptions = { timeout?: number };
+type ExecResult = { stdout: string; stderr: string; exit_code: number };
+
+// Read a UTF-8 file via Node (cross-platform replacement for `cat`). exit_code
+// is 1 when the file is missing, matching the previous `cat` behavior.
+function readFile(shell: Shell, path: string, options?: ExecOptions): Promise<ExecResult> {
+  const script = `try{process.stdout.write(require('fs').readFileSync(process.argv[1],'utf8'))}catch(e){process.exit(1)}`;
+  return shell.exec('node', ['-e', script, path], options ?? { timeout: 10 });
+}
+
+// Print the first existing file among the arguments; exit 1 when none exist
+// (cross-platform replacement for the previous `ls <files>` probe).
+function firstExistingFile(
+  shell: Shell,
+  paths: string[],
+  options?: ExecOptions
+): Promise<ExecResult> {
+  const script = `const fs=require('fs');const hit=process.argv.slice(1).find(p=>fs.existsSync(p));if(hit){process.stdout.write(hit)}else{process.exit(1)}`;
+  return shell.exec('node', ['-e', script, ...paths], options ?? { timeout: 10 });
+}
+
+// ---------------------------------------------------------------------------
 // Sanity detection hooks
 // ---------------------------------------------------------------------------
 
@@ -325,18 +356,22 @@ function useSanityDetection() {
     const check = async () => {
       try {
         // Check for sanity.config.ts or sanity.config.js
-        const configResult = await shellRef.current.exec('ls', ['sanity.config.ts', 'sanity.config.js']);
+        const configResult = await firstExistingFile(
+          shellRef.current,
+          ['sanity.config.ts', 'sanity.config.js'],
+          { timeout: 10 }
+        );
         if (configResult.exit_code === 0 && configResult.stdout.trim()) {
           setHasSanity(true);
           return;
         }
       } catch {
-        // ls failed, files don't exist
+        // Check failed, files don't exist
       }
 
       try {
         // Check package.json for sanity dependencies
-        const pkgResult = await shellRef.current.exec('cat', ['package.json']);
+        const pkgResult = await readFile(shellRef.current, 'package.json', { timeout: 10 });
         if (pkgResult.exit_code === 0) {
           const content = pkgResult.stdout;
           if (content.includes('"sanity"') || content.includes('"next-sanity"')) {
@@ -386,7 +421,7 @@ function useSanityEnvCheck(hasSanity: boolean) {
       // Check .env.local first, then .env
       for (const envFile of ['.env.local', '.env']) {
         try {
-          const result = await shellRef.current.exec('cat', [envFile]);
+          const result = await readFile(shellRef.current, envFile, { timeout: 10 });
           if (result.exit_code === 0) {
             for (const line of result.stdout.split('\n')) {
               const trimmed = line.trim();
